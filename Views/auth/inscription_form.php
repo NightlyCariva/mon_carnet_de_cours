@@ -2,9 +2,14 @@
 // Backend inscription
 require_once __DIR__ . '/../../BDD/pdo.php';
 require_once __DIR__ . '/../../Models/user.php';
+require_once __DIR__ . '/../../Models/filiere.php';
 
 $erreurs = [];
 $success = false;
+$user = new User($pdo, null, null, null, null, null, null);
+$filiere = new Filiere($pdo, null);
+// Récupérer toutes les filières
+$filieres = $filiere->getAllFilieres();	
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role = $_POST['role'] ?? '';
@@ -14,10 +19,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $prenom = trim($_POST['prenom'] ?? '');
     $mdp = $_POST['mdp'] ?? '';
     $photo_de_profil = 'default_profil.png';
+    $id_filiere = $_POST['filiere'] ?? null;
 
-    // Validation
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $erreurs[] = "Email invalide.";
+    if (empty($role)) {
+        $erreurs[] = "Le rôle est obligatoire.";
+    }
+    if (empty($numero_etudiant) && $role === 'etudiant') {
+        $erreurs[] = "Le numéro étudiant est obligatoire.";
+    } elseif ($user->checkNumeroEtudiantExists($numero_etudiant)) {
+        $erreurs[] = "Ce numéro étudiant est déjà utilisé.";
+    }
+    if (empty($email)) {
+        $erreurs[] = "L'email est obligatoire.";
+    } else {
+        if ($user->checkEmailExists($email)) {
+            $erreurs[] = "Cet email est déjà utilisé.";
+        }
     }
     if (empty($nom)) {
         $erreurs[] = "Le nom est obligatoire.";
@@ -28,34 +45,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($mdp)) {
         $erreurs[] = "Le mot de passe est obligatoire.";
     }
+    if ($role === 'etudiant' && empty($id_filiere)) {
+        $erreurs[] = "La filière est obligatoire pour les étudiants.";
+    } elseif ($role === 'prof') {
+        $id_filiere = $filiere->getFiliereByName('Responsable')['Id_Filière'];
+    }
 
     // Gestion de la photo de profil
     if (isset($_FILES['photo_de_profil']) && $_FILES['photo_de_profil']['error'] === UPLOAD_ERR_OK) {
-        $tmp_name = $_FILES['photo_de_profil']['tmp_name'];
-        $original_name = basename($_FILES['photo_de_profil']['name']);
-        $ext = pathinfo($original_name, PATHINFO_EXTENSION);
-        $timestamp = time();
-        $new_name = "profil_{$timestamp}.{$ext}";
-        $upload_dir = __DIR__ . '/../images/';
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0777, true);
-        }
-        if (move_uploaded_file($tmp_name, $upload_dir . $new_name)) {
-            $photo_de_profil = $new_name;
+        $file = $_FILES['photo_de_profil'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif'];
+        
+        if (!in_array($ext, $allowed_extensions)) {
+            $erreurs[] = "Format de fichier non autorisé. Utilisez JPG, JPEG, PNG ou GIF.";
         } else {
-            $erreurs[] = "Erreur lors de l'upload de la photo de profil.";
+            $timestamp = time();
+            $photo_de_profil = "profil_{$timestamp}.{$ext}";
+            //Views/images/
+            $upload_dir = __DIR__ . '/../../Views/images/';
+            
+            if (move_uploaded_file($file['tmp_name'], $upload_dir . $photo_de_profil)) {
+                // Le fichier a été déplacé avec succès, le nom est déjà dans $photo_de_profil
+            } else {
+                $erreurs[] = "Erreur lors de l'upload de la photo de profil.";
+                $photo_de_profil = 'default_profil.png';
+            }
         }
-    }
-
-    // Vérifier si l'email existe déjà
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM User WHERE email = ?');
-    $stmt->execute([$email]);
-    if ($stmt->fetchColumn() > 0) {
-        $erreurs[] = "Cet email est déjà utilisé.";
+    } else {
+        $photo_de_profil = 'default_profil.png';
     }
 
     // Récupérer l'id du rôle
-    $role_nom = $role === 'prof' ? 'prof responsable' : 'etudiant';
+    $role_nom = $role === 'prof' ? 'Professeur responsable' : 'etudiant';
     $stmt = $pdo->prepare('SELECT Id_Role FROM Role WHERE role = ?');
     $stmt->execute([$role_nom]);
     $id_role = $stmt->fetchColumn();
@@ -67,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Hash du mot de passe
         $mdp_hash = password_hash($mdp, PASSWORD_DEFAULT);
         // Insertion
-        $stmt = $pdo->prepare('INSERT INTO User (numéro_étudiant, email, nom, prenom, photo_de_profil, mdp, Id_Role) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $stmt = $pdo->prepare('INSERT INTO User (numéro_étudiant, email, nom, prenom, photo_de_profil, mdp, Id_Role, Id_Filière) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
             $numero_etudiant ?: null,
             $email,
@@ -75,7 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $prenom,
             $photo_de_profil,
             $mdp_hash,
-            $id_role
+            $id_role,
+            $id_filiere
         ]);
         $success = true;
     }
@@ -92,16 +115,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     <?php elseif ($success): ?>
         <div class="alert alert-success">Inscription réussie ! Vous pouvez vous connecter.</div>
+        <script>
+            setTimeout(function() {
+                window.location.href = 'connexion_form.php';
+            }, 2000);
+        </script>
     <?php endif; ?>
     <form action="" method="POST" enctype="multipart/form-data">
         <div class="mb-3">
             <label class="form-label">Rôle</label><br>
             <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="role" id="etudiant" value="etudiant" <?= (($_POST['role'] ?? '') !== 'prof') ? 'checked' : '' ?>>
+                <input class="form-check-input" type="radio" name="role" id="etudiant" value="etudiant" checked>
                 <label class="form-check-label" for="etudiant">Étudiant</label>
             </div>
             <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="role" id="prof" value="prof" <?= (($_POST['role'] ?? '') === 'prof') ? 'checked' : '' ?>>
+                <input class="form-check-input" type="radio" name="role" id="prof" value="prof">
                 <label class="form-check-label" for="prof">Professeur responsable</label>
             </div>
         </div>
@@ -121,6 +149,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label for="prenom" class="form-label">Prénom</label>
             <input type="text" class="form-control" id="prenom" name="prenom" required value="<?= htmlspecialchars($_POST['prenom'] ?? '') ?>">
         </div>
+        <div class="mb-3" id="filiereField">
+            <label for="filiere" class="form-label">Filière</label>
+            <select class="form-select" id="filiere" name="filiere">
+                <option value="">Sélectionnez une filière</option>
+                <?php foreach ($filieres as $filiere): ?>
+                    <option value="<?= $filiere['Id_Filière'] ?>" <?= (isset($_POST['filiere']) && $_POST['filiere'] == $filiere['Id_Filière']) ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($filiere['Nom_filière']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
         <div class="mb-3">
             <label for="photo_de_profil" class="form-label">Photo de profil</label>
             <input type="file" class="form-control" id="photo_de_profil" name="photo_de_profil" accept="image/*">
@@ -133,3 +172,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <button type="submit" class="btn btn-primary">S'inscrire</button>
     </form>
 </div>
+
+<?php include_once __DIR__ . '/../partials/footer.php'; ?>

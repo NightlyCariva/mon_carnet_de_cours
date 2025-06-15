@@ -15,6 +15,13 @@ class Filiere {
         return $stmt->fetch();
     }
 
+    // Récupérer une SEULE filière par son nom
+    public function getFiliereByName($nom) {
+        $stmt = $this->pdo->prepare('SELECT * FROM Filière WHERE Nom_filière = ?');
+        $stmt->execute([$nom]);
+        return $stmt->fetch();
+    }
+
     // Récupérer tous les étudiants d'une filière
     public function getEtudiantsByFiliere($idFiliere) {
         $stmt = $this->pdo->prepare('SELECT * FROM User WHERE Id_Filière = ?');
@@ -52,9 +59,30 @@ class Filiere {
         return $stmt->execute([$idMatiere, $idFiliere]);
     }
 
-    //Initialiser une filière RESPONSABLE pour les Professeur responsable
+    // Récupérer toutes les filières
+    public function getAllFilieres() {
+        $stmt = $this->pdo->prepare('SELECT * FROM Filière');
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    //Initialiser une filière RESPONSABLE, develepement digital, gestion d'entreprise, vertualisation, s'ils n'existent pas
     public function initFiliereResponsable() {
-        $stmt = $this->pdo->prepare('INSERT INTO Filière (Nom_filière) VALUES (?)');
-        return $stmt->execute(['Responsable']);
+        //verifier si la filière existe déjà
+        $stmt = $this->pdo->prepare('SELECT * FROM Filière WHERE Nom_filière = ?');
+        $stmt->execute(['Responsable']);
+        $result = $stmt->fetch();
+        if (!$result) {
+            $stmt = $this->pdo->prepare('INSERT INTO Filière (Nom_filière) VALUES (?)');
+            $stmt->execute(['Responsable']);
+            $stmt = $this->pdo->prepare('INSERT INTO Filière (Nom_filière) VALUES (?)');
+            $stmt->execute(['Developpement digital']);
+            $stmt = $this->pdo->prepare('INSERT INTO Filière (Nom_filière) VALUES (?)');
+            $stmt->execute(['Gestion d\'entreprise']);
+            $stmt = $this->pdo->prepare('INSERT INTO Filière (Nom_filière) VALUES (?)');
+            $stmt->execute(['Vertualisation']);
+            return true;
+        }
+        return false;
     }
 }

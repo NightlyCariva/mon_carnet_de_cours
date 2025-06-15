@@ -1,0 +1,24 @@
+/* Style général pour le body et html */
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Style pour le contenu principal */
+main {
+    flex: 1 0 auto;
+}
+
+/* Style pour le footer */
+footer {
+    flex-shrink: 0;
+    width: 100%;
+    position: relative;
+    bottom: 0;
+}

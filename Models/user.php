@@ -87,5 +87,19 @@ class User {
         return $somme / count($notes);
     }
 
+    //Check si l'email existe déjà
+    public function checkEmailExists($email) {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM User WHERE email = ?");
+        $stmt->execute([$email]);
+        return $stmt->fetchColumn() > 0;
+    }
+
+    // Check si le numéro étudiant existe déjà
+    public function checkNumeroEtudiantExists($numero_etudiant) {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM User WHERE numéro_étudiant = ?");
+        $stmt->execute([$numero_etudiant]);
+        return $stmt->fetchColumn() > 0;
+    }
+
     
 }
